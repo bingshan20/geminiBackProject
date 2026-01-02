@@ -147,9 +147,9 @@ class CurlCallbackAnalyzer:
 
         # 回调时间统计
         callback_timings = {
-            'total_callbacks': sum(self.callback_stats.values()) - len(self.callback_stats['callback_methods_used']),
+            'total_callbacks': sum(v for v in self.callback_stats.values() if isinstance(v, (int, float))),
             'callback_stats': self.callback_stats,
-            'callback_methods_count': len(self.callback_stats['callback_methods_used']),
+            'callback_methods_count': len(self.callback_stats.get('callback_methods_used', [])),
             'callback_analysis_available': True
         }
 
