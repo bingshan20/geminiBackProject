@@ -1,4 +1,4 @@
-pycurl==7.45.7 --global-option="--with-nss"
+pycurl==7.45.7
 python-dotenv==1.0.0
 PyYAML==6.0.1
 requests==2.31.0
