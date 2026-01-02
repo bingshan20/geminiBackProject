@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-分析器核心模块 - 集成回调机制
+分析器核心模块 - 修复版本
 """
 
 import pycurl
@@ -16,7 +16,7 @@ from .utils import encode_image_to_base64, format_timing_results, save_results, 
 
 
 class CurlCallbackAnalyzer:
-    """CURL 回调分析器 - 用于精确时间测量"""
+    """CURL 回调分析器 - 修复版本"""
 
     def __init__(self):
         self.timestamps = {
@@ -43,9 +43,10 @@ class CurlCallbackAnalyzer:
         self.first_byte_received = False
         self.bytes_uploaded = 0
         self.bytes_downloaded = 0
+        self.buffer = BytesIO()  # 添加缓冲区
 
     def progress_callback(self, dltotal, dlnow, ultotal, ulnow):
-        """进度回调函数"""
+        """进度回调函数 - 修复版本"""
         current_time = time.perf_counter()
         self.callback_stats['progress_callbacks'] += 1
 
@@ -70,7 +71,7 @@ class CurlCallbackAnalyzer:
         return 0
 
     def write_callback(self, data):
-        """写入回调函数"""
+        """写入回调函数 - 修复版本"""
         current_time = time.perf_counter()
         self.callback_stats['write_callbacks'] += 1
 
@@ -84,25 +85,29 @@ class CurlCallbackAnalyzer:
 
         data_len = len(data)
         self.bytes_downloaded += data_len
+
+        # 写入到缓冲区
+        self.buffer.write(data)
         return data_len
 
-    def header_callback(self, data):
-        """头部回调函数"""
-        self.callback_stats['header_callbacks'] += 1
+    def get_response_data(self):
+        """获取响应数据"""
+        return self.buffer.getvalue()
 
-        if 'header' not in self.callback_stats['callback_methods_used']:
-            self.callback_stats['callback_methods_used'].append('header')
-
-        return len(data)
-
-    def debug_callback(self, debug_type, debug_msg):
-        """调试回调函数"""
-        self.callback_stats['debug_callbacks'] += 1
-
-        if 'debug' not in self.callback_stats['callback_methods_used']:
-            self.callback_stats['callback_methods_used'].append('debug')
-
-        return 0
+    def reset(self):
+        """重置分析器状态"""
+        self.buffer = BytesIO()
+        for key in self.timestamps:
+            self.timestamps[key] = None
+        self.upload_started = False
+        self.first_byte_received = False
+        self.bytes_uploaded = 0
+        self.bytes_downloaded = 0
+        self.callback_stats = {
+            'progress_callbacks': 0,
+            'write_callbacks': 0,
+            'callback_methods_used': []
+        }
 
     def calculate_precise_timings(self, curl_timings):
         """计算精确的时间分解"""
@@ -155,16 +160,18 @@ class CurlCallbackAnalyzer:
 
         return precise_timings, callback_timings
 
-
 class GeminiAnalyzer:
-    """Gemini 分析器 - 集成回调机制"""
+    """Gemini 分析器 - 修复版本"""
 
     def __init__(self):
         self.config = get_config()
         self.callback_analyzer = CurlCallbackAnalyzer()
 
     def analyze_image(self, image_path: str, prompt_name: str = None, save_result: bool = False) -> Dict[str, Any]:
-        """分析单张图片 - 集成回调机制"""
+        """分析单张图片 - 修复版本"""
+
+        # 重置分析器状态
+        self.callback_analyzer.reset()
 
         # 获取 prompt 文本
         prompt_text = self.config.get_prompt(prompt_name)
@@ -178,10 +185,10 @@ class GeminiAnalyzer:
                 self._save_single_result(error_result, image_path, prompt_name)
             return error_result
 
-        # 构建请求 URL
-        url = f"{self.config.api_url}?key={self.config.api_key}"
+        # 构建请求 URL - 使用测试代码的成功格式
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.config.api_key}"
 
-        # 构建请求载荷
+        # 构建请求载荷 - 使用测试代码的成功格式
         payload = {
             "contents": [
                 {
@@ -193,7 +200,7 @@ class GeminiAnalyzer:
                             }
                         },
                         {
-                            "text": prompt_text
+                            "text": prompt_text or "请快速说出字的颜色，可以容忍不确定性，只返回一个字，其他不要返回"
                         }
                     ]
                 }
@@ -201,13 +208,12 @@ class GeminiAnalyzer:
         }
 
         data = json.dumps(payload)
-        buffer = BytesIO()
+
+        # 创建 curl 对象
+        c = pycurl.Curl()
 
         try:
-            # 创建 curl 对象
-            c = pycurl.Curl()
-
-            # 设置基本选项
+            # 设置基本选项 - 使用测试代码的成功配置
             c.setopt(pycurl.URL, url)
             c.setopt(pycurl.POST, 1)
             c.setopt(pycurl.POSTFIELDS, data)
@@ -215,17 +221,21 @@ class GeminiAnalyzer:
                 "Content-Type: application/json",
                 f"Content-Length: {len(data)}"
             ])
-            c.setopt(pycurl.WRITEDATA, buffer)
-            c.setopt(pycurl.VERBOSE, 0)
-            c.setopt(pycurl.NOPROGRESS, 0)  # 启用进度回调
-            c.setopt(pycurl.TIMEOUT, self.config.api_timeout)
 
-            # 设置回调函数
-            c.setopt(pycurl.PROGRESSFUNCTION, self.callback_analyzer.progress_callback)
+            # 使用 WRITEFUNCTION 而不是 WRITEDATA
             c.setopt(pycurl.WRITEFUNCTION, self.callback_analyzer.write_callback)
-            c.setopt(pycurl.HEADERFUNCTION, self.callback_analyzer.header_callback)
-            if logger._core.min_level <= 10:  # DEBUG level
-                c.setopt(pycurl.DEBUGFUNCTION, self.callback_analyzer.debug_callback)
+
+            # 设置进度回调 - 使用兼容性处理
+            try:
+                # 优先使用 XFERINFOFUNCTION（新API）
+                c.setopt(pycurl.FERINFOFUNCTION, self.callback_analyzer.progress_callback)
+            except AttributeError:
+                # 回退到 PROGRESSFUNCTION（旧API）
+                c.setopt(pycurl.PROGRESSFUNCTION, self.callback_analyzer.progress_callback)
+
+            c.setopt(pycurl.NOPROGRESS, 0)  # 启用进度回调
+            c.setopt(pycurl.VERBOSE, 0)  # 关闭详细输出（避免干扰）
+            c.setopt(pycurl.TIMEOUT, self.config.api_timeout)
 
             # 记录开始时间
             self.callback_analyzer.timestamps['start'] = time.perf_counter()
@@ -242,22 +252,33 @@ class GeminiAnalyzer:
             # 获取精确时间信息（通过回调）
             precise_timings = {}
             callback_timings = {}
-            if self.config.enable_callback_timing:
-                # 记录DNS、TCP、SSL完成时间
-                self.callback_analyzer.timestamps['dns_complete'] = (
-                        self.callback_analyzer.timestamps['start'] + c.getinfo(pycurl.NAMELOOKUP_TIME)
-                )
-                self.callback_analyzer.timestamps['tcp_connect_complete'] = (
-                        self.callback_analyzer.timestamps['start'] + c.getinfo(pycurl.CONNECT_TIME)
-                )
-                self.callback_analyzer.timestamps['ssl_complete'] = (
-                        self.callback_analyzer.timestamps['start'] + c.getinfo(pycurl.APPCONNECT_TIME)
-                )
 
-                precise_timings, callback_timings = self.callback_analyzer.calculate_precise_timings(standard_timings)
+            # 记录DNS、TCP、SSL完成时间
+            self.callback_analyzer.timestamps['dns_complete'] = (
+                    self.callback_analyzer.timestamps['start'] + c.getinfo(pycurl.NAMELOOKUP_TIME)
+            )
+            self.callback_analyzer.timestamps['tcp_connect_complete'] = (
+                    self.callback_analyzer.timestamps['start'] + c.getinfo(pycurl.CONNECT_TIME)
+            )
+            self.callback_analyzer.timestamps['ssl_complete'] = (
+                    self.callback_analyzer.timestamps['start'] + c.getinfo(pycurl.APPCONNECT_TIME)
+            )
+
+            precise_timings, callback_timings = self.callback_analyzer.calculate_precise_timings(standard_timings)
 
             # 获取响应
-            response_body = buffer.getvalue().decode('utf-8')
+            response_bytes = self.callback_analyzer.get_response_data()
+            c.close()
+
+            if not response_bytes:
+                error_msg = "响应体为空"
+                logger.error(error_msg)
+                error_result = {'error': error_msg, 'success': False}
+                if save_result:
+                    self._save_single_result(error_result, image_path, prompt_name)
+                return error_result
+
+            response_body = response_bytes.decode('utf-8')
 
             # 解析响应
             result = self._parse_response(response_body, http_code)
@@ -283,8 +304,6 @@ class GeminiAnalyzer:
             if callback_timings:
                 result['callback'] = callback_timings
 
-            c.close()
-
             # 保存结果（如果需要）
             if save_result:
                 self._save_single_result(result, image_path, prompt_name)
@@ -293,6 +312,7 @@ class GeminiAnalyzer:
 
         except pycurl.error as e:
             error_msg = f"PyCURL 请求失败: {e}"
+            c.close()
             logger.error(error_msg)
             error_result = {'error': error_msg, 'success': False}
             if save_result:
