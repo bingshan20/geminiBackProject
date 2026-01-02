@@ -221,7 +221,7 @@ class GeminiAnalyzer:
             c.setopt(pycurl.TIMEOUT, self.config.api_timeout)
 
             # 设置回调函数
-            c.setopt(pycurl.XFERINFOFUNCTION, self.callback_analyzer.progress_callback)
+            c.setopt(pycurl.PROGRESSFUNCTION, self.callback_analyzer.progress_callback)
             c.setopt(pycurl.WRITEFUNCTION, self.callback_analyzer.write_callback)
             c.setopt(pycurl.HEADERFUNCTION, self.callback_analyzer.header_callback)
             if logger._core.min_level <= 10:  # DEBUG level
