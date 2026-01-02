@@ -7,7 +7,6 @@ def check_pycurl_features():
     """检查 pycurl 功能支持情况"""
     print("=== pycurl 功能诊断 ===")
     print(f"pycurl 版本: {pycurl.version}")
-    print(f"pycurl 模块版本: {pycurl.__version__}")
 
     # 检查重要属性
     attributes_to_check = [
