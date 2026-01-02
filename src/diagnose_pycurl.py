@@ -26,9 +26,6 @@ def check_pycurl_features():
         else:
             print(f"  ✗ {attr} (缺失)")
 
-    # 检查编译时特性
-    print(f"\nlibcurl 版本: {pycurl.libcurl_version}")
-
     # 尝试创建一个简单的 curl 对象测试基本功能
     try:
         c = pycurl.Curl()
