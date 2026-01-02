@@ -1,0 +1,66 @@
+# Gemini 图片颜色分析器配置
+
+# API 配置
+api:
+  base_url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+  timeout: 30
+  max_retries: 3
+
+# 图片处理配置
+images:
+  # 要处理的图片列表（支持通配符）
+  files:
+    - "1.png"
+    - "2.png"
+    - "4.png"
+    - "5.png"
+    - "6.png"
+    - "7.png"
+#    - "8.png"
+#    - "9.png"
+#    - "*.png"  # 匹配所有png文件
+
+  # 图片目录（相对于src目录）
+  directory: "img"
+
+  # 支持的图片格式
+  supported_formats: [".png", ".jpg"]
+
+# Prompt 配置
+prompts:
+  # 默认使用的 prompt 名称
+  default: "color_detection_speed"
+
+  # 可用的 prompt 列表
+  available:
+    color_detection_speed:
+      name: "颜色检测-速度"
+      text: "Please quickly say the color of the word; it's okay to make mistakes. Only return one word, and do not return anything else."
+      description: "检测图片中文字的颜色--强调速度"
+
+    color_detection_accuracy:
+      name: "颜色检测-准确"
+      text: "Please accurately state the color of the word, return only one word, with no additional text."
+      description: "检测图片中文字的颜色--强调准确性"
+
+# 输出配置
+output:
+  # 结果文件配置
+  results:
+    directory: "results/batch_results"
+    filename: "analysis_results_{timestamp}.json"
+    format: "json"  # json, csv
+
+  # 报告配置
+  reports:
+    directory: "results/performance_reports"
+    include_timing: true
+    generate_summary: true
+
+# 性能分析配置
+performance:
+  enable_timing: true
+  save_individual_results: true
+  log_level: "INFO"
+  enable_callback_timing: true  # 是否启用回调时间分析
+  callback_interval_ms: 100  # 回调分析间隔（毫秒）
