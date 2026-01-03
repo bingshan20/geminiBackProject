@@ -121,11 +121,12 @@ class PreciseTimingAnalyzer:
         # 计算请求体发送时间（从开始到请求体发送完成）
         if self.key_events['request_body_sent']:
             precise_timings['request_body_send_time'] = (self.key_events['request_body_sent'] - start_time) * 1000
+            precise_timings['request_body_sent'] = self.key_events['request_body_sent']
 
         # 计算服务器处理时间（从请求体发送完成到收到第一个字节）
         if self.key_events['request_body_sent'] and self.key_events['first_byte_received']:
             precise_timings['server_processing_time'] = (self.key_events['first_byte_received'] - self.key_events['request_body_sent']) * 1000
-
+            precise_timings['first_byte_received'] = self.key_events['first_byte_received']
         # 添加回调统计
         precise_timings['callback_stats'] = self.callback_stats.copy()
 
@@ -285,6 +286,7 @@ class GeminiAnalyzer:
                         'request_send': standard_timings.get('request_send', 0) * 1000,
                         'server_processing': standard_timings.get('server_processing', 0) * 1000,
                         'response_transfer': standard_timings.get('response_transfer', 0) * 1000,
+                        'pretransfer_time': standard_timings.get('pretransfer_time', 0),
                         'total_time': standard_timings.get('total_time', 0) * 1000
                     }
 
@@ -338,7 +340,6 @@ class GeminiAnalyzer:
         timings['request_send'] = timings['pretransfer_time'] - timings['appconnect_time']
         timings['server_processing'] = timings['starttransfer_time'] - timings['pretransfer_time']
         timings['response_transfer'] = timings['total_time'] - timings['starttransfer_time']
-
         return timings
 
     def _save_single_result(self, result: Dict[str, Any], image_path: str, prompt_name: str = None):
