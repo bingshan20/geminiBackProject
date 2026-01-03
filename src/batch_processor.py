@@ -18,9 +18,9 @@ from .analyzer import GeminiAnalyzer
 class BatchProcessor:
     """批量处理器"""
 
-    def __init__(self):
+    def __init__(self, timing_mode='standard'):
         self.config = get_config()
-        self.analyzer = GeminiAnalyzer()
+        self.analyzer = GeminiAnalyzer(timing_mode=timing_mode)
         self.results = {}
 
     def get_images_to_process(self) -> List[Path]:
@@ -58,7 +58,8 @@ class BatchProcessor:
                 'start_time': generate_timestamp(),
                 'total_images': len(image_files),
                 'prompt_used': prompt_name,
-                'config_file': str(self.config.config_path)
+                'config_file': str(self.config.config_path),
+                'timing_mode': self.analyzer.timing_mode
             },
             'results': {},
             'summary': {}
@@ -156,11 +157,12 @@ class BatchProcessor:
         report_lines.append(f"成功率: {summary['success_rate']:.1f}%")
         report_lines.append(f"平均处理时间: {summary['average_processing_time']:.2f}秒")
         report_lines.append(f"总处理时间: {summary['total_processing_time']:.2f}秒")
+        report_lines.append(f"时间模式: {self.results['metadata'].get('timing_mode', 'unknown')}")
 
         # 显示每个图片的结果摘要
         report_lines.append("\n各图片处理结果:")
         for image_name, result in self.results['results'].items():
-            status = "✓" if result.get('success') else "✗"
+            status = "✓" if result.get('success') else "✗✗"
             response = result.get('response_text', 'N/A')
             report_lines.append(f"  {status} {image_name}: {response}")
 
@@ -179,7 +181,6 @@ class BatchProcessor:
             logger.info(f"使用 prompt '{prompt_name}' 处理图片...")
 
             # 处理当前 prompt
-            #results = self.process_batch(prompt_name=prompt_name, save_individual=False)
             results = self.process_batch(prompt_name=prompt_name)
             all_results[prompt_name] = results
 
@@ -212,7 +213,7 @@ class BatchProcessor:
                                'server_processing', 'response_transfer']
 
                 for key in timing_keys:
-                    times = [r['timings'][key] * 1000 for r in successful_results if 'timings' in r]
+                    times = [r['timings']['standard'][key] for r in successful_results if 'timings' in r and 'standard' in r['timings']]
                     if times:
                         timing_stats[key] = {
                             'min': min(times),

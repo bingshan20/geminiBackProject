@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-分析器核心模块 - 修复版本
+分析器核心模块 - 修正版本
+提供两种清晰的回调模式选择
 """
 
 import pycurl
@@ -12,83 +13,19 @@ from typing import Dict, Any
 from pathlib import Path
 from loguru import logger
 from .config import get_config
-from .utils import encode_image_to_base64, format_timing_results, save_results, generate_timestamp
+from .utils import encode_image_to_base64, save_results, generate_timestamp
 
 
-class CurlCallbackAnalyzer:
-    """CURL 回调分析器 - 修复版本"""
+class StandardTimingAnalyzer:
+    """标准时间分析器 - 只使用pycurl标准API，无回调开销"""
 
     def __init__(self):
-        self.timestamps = {
-            'start': None,
-            'dns_complete': None,
-            'tcp_connect_complete': None,
-            'ssl_complete': None,
-            'upload_start': None,
-            'upload_complete': None,
-            'first_byte_received': None,
-            'response_complete': None,
-        }
-
-        # 回调统计
-        self.callback_stats = {
-            'progress_callbacks': 0,
-            'write_callbacks': 0,
-            'header_callbacks': 0,
-            'debug_callbacks': 0,
-            'callback_methods_used': []
-        }
-
-        self.upload_started = False
-        self.first_byte_received = False
-        self.bytes_uploaded = 0
-        self.bytes_downloaded = 0
-        self.buffer = BytesIO()  # 添加缓冲区
-
-    def progress_callback(self, dltotal, dlnow, ultotal, ulnow):
-        """进度回调函数 - 修复版本"""
-        current_time = time.perf_counter()
-        self.callback_stats['progress_callbacks'] += 1
-
-        if 'progress' not in self.callback_stats['callback_methods_used']:
-            self.callback_stats['callback_methods_used'].append('progress')
-
-        # 记录上传开始时间
-        if ultotal > 0 and not self.upload_started:
-            self.timestamps['upload_start'] = current_time
-            self.upload_started = True
-
-        # 记录上传完成时间
-        if ultotal > 0 and ulnow == ultotal and self.timestamps['upload_complete'] is None:
-            self.timestamps['upload_complete'] = current_time
-            self.bytes_uploaded = ultotal
-
-        # 记录下载完成时间
-        if dltotal > 0 and dlnow == dltotal and self.timestamps['response_complete'] is None:
-            self.timestamps['response_complete'] = current_time
-            self.bytes_downloaded = dlnow
-
-        return 0
+        self.buffer = BytesIO()
 
     def write_callback(self, data):
-        """写入回调函数 - 修复版本"""
-        current_time = time.perf_counter()
-        self.callback_stats['write_callbacks'] += 1
-
-        if 'write' not in self.callback_stats['callback_methods_used']:
-            self.callback_stats['callback_methods_used'].append('write')
-
-        # 记录第一个字节到达时间
-        if not self.first_byte_received:
-            self.timestamps['first_byte_received'] = current_time
-            self.first_byte_received = True
-
-        data_len = len(data)
-        self.bytes_downloaded += data_len
-
-        # 写入到缓冲区
+        """必要的写入回调 - 用于接收响应数据"""
         self.buffer.write(data)
-        return data_len
+        return len(data)
 
     def get_response_data(self):
         """获取响应数据"""
@@ -97,81 +34,138 @@ class CurlCallbackAnalyzer:
     def reset(self):
         """重置分析器状态"""
         self.buffer = BytesIO()
-        for key in self.timestamps:
-            self.timestamps[key] = None
-        self.upload_started = False
-        self.first_byte_received = False
-        self.bytes_uploaded = 0
-        self.bytes_downloaded = 0
-        self.callback_stats = {
-            'progress_callbacks': 0,
-            'write_callbacks': 0,
-            'callback_methods_used': []
+
+    def calculate_timings(self, curl_obj):
+        """基于pycurl标准API计算时间"""
+        # 直接从curl对象获取时间信息
+        timings = {
+            'dns_time': curl_obj.getinfo(pycurl.NAMELOOKUP_TIME) * 1000,
+            'tcp_handshake': (curl_obj.getinfo(pycurl.CONNECT_TIME) -
+                              curl_obj.getinfo(pycurl.NAMELOOKUP_TIME)) * 1000,
+            'ssl_handshake': (curl_obj.getinfo(pycurl.APPCONNECT_TIME) -
+                              curl_obj.getinfo(pycurl.CONNECT_TIME)) * 1000,
+            'request_send': (curl_obj.getinfo(pycurl.PRETRANSFER_TIME) -
+                             curl_obj.getinfo(pycurl.APPCONNECT_TIME)) * 1000,
+            'server_processing': (curl_obj.getinfo(pycurl.STARTTRANSFER_TIME) -
+                                  curl_obj.getinfo(pycurl.PRETRANSFER_TIME)) * 1000,
+            'response_transfer': (curl_obj.getinfo(pycurl.TOTAL_TIME) -
+                                  curl_obj.getinfo(pycurl.STARTTRANSFER_TIME)) * 1000,
+            'total_time': curl_obj.getinfo(pycurl.TOTAL_TIME) * 1000
         }
+        return timings
 
-    def calculate_precise_timings(self, curl_timings):
-        """计算精确的时间分解"""
-        if not self.timestamps['start']:
-            return None, None
 
-        start = self.timestamps['start']
-        precise_timings = {}
-        callback_timings = {}
-
-        # 计算各阶段耗时（单位：毫秒）
-        if self.timestamps['dns_complete']:
-            precise_timings['dns_resolution'] = (self.timestamps['dns_complete'] - start) * 1000
-
-        if self.timestamps['dns_complete'] and self.timestamps['tcp_connect_complete']:
-            precise_timings['tcp_handshake'] = (self.timestamps['tcp_connect_complete'] -
-                                                self.timestamps['dns_complete']) * 1000
-
-        if self.timestamps['tcp_connect_complete'] and self.timestamps['ssl_complete']:
-            precise_timings['ssl_handshake'] = (self.timestamps['ssl_complete'] -
-                                                self.timestamps['tcp_connect_complete']) * 1000
-
-        if self.timestamps['ssl_complete'] and self.timestamps['upload_start']:
-            precise_timings['request_header_send'] = (self.timestamps['upload_start'] -
-                                                      self.timestamps['ssl_complete']) * 1000
-
-        if self.timestamps['upload_start'] and self.timestamps['upload_complete']:
-            precise_timings['request_body_upload'] = (self.timestamps['upload_complete'] -
-                                                      self.timestamps['upload_start']) * 1000
-
-        # 关键：精确的服务器处理时间
-        if self.timestamps['upload_complete'] and self.timestamps['first_byte_received']:
-            precise_timings['server_processing'] = (self.timestamps['first_byte_received'] -
-                                                    self.timestamps['upload_complete']) * 1000
-
-        if self.timestamps['first_byte_received'] and self.timestamps['response_complete']:
-            precise_timings['response_receive'] = (self.timestamps['response_complete'] -
-                                                   self.timestamps['first_byte_received']) * 1000
-
-        if 'total' in curl_timings:
-            precise_timings['total'] = curl_timings['total'] * 1000
-
-        # 回调时间统计
-        callback_timings = {
-            'total_callbacks': sum(v for v in self.callback_stats.values() if isinstance(v, (int, float))),
-            'callback_stats': self.callback_stats,
-            'callback_methods_count': len(self.callback_stats.get('callback_methods_used', [])),
-            'callback_analysis_available': True
-        }
-
-        return precise_timings, callback_timings
-
-class GeminiAnalyzer:
-    """Gemini 分析器 - 修复版本"""
+class PreciseTimingAnalyzer:
+    """精确时间分析器 - 使用回调获取精确的关键事件时间"""
 
     def __init__(self):
+        self.key_events = {
+            'request_body_sent': None,  # 请求体发送完成时间
+            'first_byte_received': None,  # 收到第一个字节时间
+        }
+
+        self.buffer = BytesIO()
+        self.request_body_sent = False
+        self.first_byte_received = False
+
+        # 回调统计
+        self.callback_stats = {
+            'progress_calls': 0,
+            'write_calls': 0
+        }
+
+    def progress_callback(self, dltotal, dlnow, ultotal, ulnow):
+        """进度回调 - 记录请求体发送完成时间"""
+        self.callback_stats['progress_calls'] += 1
+
+        # 只在上传完成且尚未记录时记录一次
+        if  not self.request_body_sent and ultotal > 0 and ulnow >= ultotal:
+            self.key_events['request_body_sent'] = time.perf_counter()
+            self.request_body_sent = True
+
+        return 0
+
+    def write_callback(self, data):
+        """写入回调 - 记录第一个字节到达时间"""
+        self.callback_stats['write_calls'] += 1
+
+        # 只在第一次收到数据时记录
+        if not self.first_byte_received:
+            self.key_events['first_byte_received'] = time.perf_counter()
+            self.first_byte_received = True
+
+        # 处理数据
+        self.buffer.write(data)
+        return len(data)
+
+    def get_response_data(self):
+        """获取响应数据"""
+        return self.buffer.getvalue()
+
+    def reset(self):
+        """重置分析器状态"""
+        self.buffer = BytesIO()
+        for key in self.key_events:
+            self.key_events[key] = None
+        self.request_body_sent = False
+        self.first_byte_received = False
+        self.callback_stats = {'progress_calls': 0, 'write_calls': 0}
+
+    def calculate_precise_timings(self, start_time, standard_timings):
+        """计算精确的时间信息"""
+        if not start_time:
+            return None
+
+        precise_timings = {}
+
+        # 计算请求体发送时间（从开始到请求体发送完成）
+        if self.key_events['request_body_sent']:
+            precise_timings['request_body_send_time'] = (self.key_events['request_body_sent'] - start_time) * 1000
+
+        # 计算服务器处理时间（从请求体发送完成到收到第一个字节）
+        if self.key_events['request_body_sent'] and self.key_events['first_byte_received']:
+            precise_timings['server_processing_time'] = (self.key_events['first_byte_received'] - self.key_events['request_body_sent']) * 1000
+
+        # 添加回调统计
+        precise_timings['callback_stats'] = self.callback_stats.copy()
+
+        # 与标准时间对比
+        if standard_timings:
+            precise_timings['standard_comparison'] = {
+                'standard_server_processing': standard_timings.get('server_processing', 0) * 1000
+            }
+
+            # 计算差异
+            if 'server_processing_time' in precise_timings:
+                diff = (precise_timings['server_processing_time'] -
+                        precise_timings['standard_comparison']['standard_server_processing'])
+                precise_timings['standard_comparison']['server_processing_diff'] = diff
+
+        return precise_timings
+
+
+class GeminiAnalyzer:
+    """Gemini 分析器 - 修正版本"""
+
+    def __init__(self, timing_mode='standard'):
+        """
+        timing_mode:
+        - 'standard': 使用标准时间（无进度回调，性能最佳）
+        - 'precise': 使用精确时间（有进度回调，获取关键事件时间）
+        """
         self.config = get_config()
-        self.callback_analyzer = CurlCallbackAnalyzer()
+        self.timing_mode = timing_mode
+
+        if timing_mode == 'standard':
+            self.analyzer = StandardTimingAnalyzer()
+        else:  # precise
+            self.analyzer = PreciseTimingAnalyzer()
 
     def analyze_image(self, image_path: str, prompt_name: str = None, save_result: bool = False) -> Dict[str, Any]:
-        """分析单张图片 - 修复版本"""
+        """分析单张图片"""
 
         # 重置分析器状态
-        self.callback_analyzer.reset()
+        self.analyzer.reset()
 
         # 获取 prompt 文本
         prompt_text = self.config.get_prompt(prompt_name)
@@ -185,10 +179,10 @@ class GeminiAnalyzer:
                 self._save_single_result(error_result, image_path, prompt_name)
             return error_result
 
-        # 构建请求 URL - 使用测试代码的成功格式
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.config.api_key}"
+        # 构建请求 URL
+        url = f"{self.config.api_url}?key={self.config.api_key}"
 
-        # 构建请求载荷 - 使用测试代码的成功格式
+        # 构建请求载荷
         payload = {
             "contents": [
                 {
@@ -200,7 +194,7 @@ class GeminiAnalyzer:
                             }
                         },
                         {
-                            "text": prompt_text or "请快速说出字的颜色，可以容忍不确定性，只返回一个字，其他不要返回"
+                            "text": prompt_text
                         }
                     ]
                 }
@@ -213,7 +207,7 @@ class GeminiAnalyzer:
         c = pycurl.Curl()
 
         try:
-            # 设置基本选项 - 使用测试代码的成功配置
+            # 设置基本选项
             c.setopt(pycurl.URL, url)
             c.setopt(pycurl.POST, 1)
             c.setopt(pycurl.POSTFIELDS, data)
@@ -222,23 +216,28 @@ class GeminiAnalyzer:
                 f"Content-Length: {len(data)}"
             ])
 
-            # 使用 WRITEFUNCTION 而不是 WRITEDATA
-            c.setopt(pycurl.WRITEFUNCTION, self.callback_analyzer.write_callback)
+            # 设置写入回调（两种模式都需要）
+            c.setopt(pycurl.WRITEFUNCTION, self.analyzer.write_callback)
 
-            # 设置进度回调 - 使用兼容性处理
-            try:
-                # 优先使用 XFERINFOFUNCTION（新API）
-                c.setopt(pycurl.FERINFOFUNCTION, self.callback_analyzer.progress_callback)
-            except AttributeError:
-                # 回退到 PROGRESSFUNCTION（旧API）
-                c.setopt(pycurl.PROGRESSFUNCTION, self.callback_analyzer.progress_callback)
+            # 根据模式设置进度回调
+            if self.timing_mode == 'precise':
+                # 精确模式：启用进度回调
+                try:
+                    c.setopt(pycurl.XFERINFOFUNCTION, self.analyzer.progress_callback)
+                    c.setopt(pycurl.NOPROGRESS, 0)
+                except AttributeError:
+                    c.setopt(pycurl.PROGRESSFUNCTION, self.analyzer.progress_callback)
+                    c.setopt(pycurl.NOPROGRESS, 0)
+            else:
+                # 标准模式：禁用进度回调
+                c.setopt(pycurl.NOPROGRESS, 1)
 
-            c.setopt(pycurl.NOPROGRESS, 0)  # 启用进度回调
-            c.setopt(pycurl.VERBOSE, 0)  # 关闭详细输出（避免干扰）
+            # 其他优化选项
+            c.setopt(pycurl.VERBOSE, 0)
             c.setopt(pycurl.TIMEOUT, self.config.api_timeout)
 
-            # 记录开始时间
-            self.callback_analyzer.timestamps['start'] = time.perf_counter()
+            # 记录开始时间（精确模式需要）
+            start_time = time.perf_counter() if self.timing_mode == 'precise' else None
 
             # 执行请求
             c.perform()
@@ -246,28 +245,8 @@ class GeminiAnalyzer:
             # 获取 HTTP 状态码
             http_code = c.getinfo(pycurl.RESPONSE_CODE)
 
-            # 获取标准时间信息
-            standard_timings = self._extract_timing_info(c) if self.config.enable_timing else {}
-
-            # 获取精确时间信息（通过回调）
-            precise_timings = {}
-            callback_timings = {}
-
-            # 记录DNS、TCP、SSL完成时间
-            self.callback_analyzer.timestamps['dns_complete'] = (
-                    self.callback_analyzer.timestamps['start'] + c.getinfo(pycurl.NAMELOOKUP_TIME)
-            )
-            self.callback_analyzer.timestamps['tcp_connect_complete'] = (
-                    self.callback_analyzer.timestamps['start'] + c.getinfo(pycurl.CONNECT_TIME)
-            )
-            self.callback_analyzer.timestamps['ssl_complete'] = (
-                    self.callback_analyzer.timestamps['start'] + c.getinfo(pycurl.APPCONNECT_TIME)
-            )
-
-            precise_timings, callback_timings = self.callback_analyzer.calculate_precise_timings(standard_timings)
-
             # 获取响应
-            response_bytes = self.callback_analyzer.get_response_data()
+            response_bytes = self.analyzer.get_response_data()
             c.close()
 
             if not response_bytes:
@@ -288,21 +267,41 @@ class GeminiAnalyzer:
                 'image_file': image_path,
                 'prompt_used': prompt_name or self.config.default_prompt,
                 'http_status': http_code,
-                'success': result.get('success', False)
+                'success': result.get('success', False),
+                'timing_mode': self.timing_mode
             })
 
             # 添加时间信息
             timing_data = {}
-            if standard_timings:
-                timing_data['standard'] = standard_timings
-            if precise_timings:
-                timing_data['precise'] = precise_timings
+
+            if self.timing_mode == 'standard':
+                # 标准模式：使用pycurl标准API计算时间
+                standard_timings = self.analyzer.calculate_timings(c)
+                if standard_timings:
+                    timing_data['standard'] = standard_timings
+
+            else:  # precise模式
+                # 精确模式：使用回调记录的关键事件计算时间
+                # 首先获取标准时间作为参考
+                standard_timings = self._extract_standard_timings(c)
+                if standard_timings:
+                    timing_data['standard'] = {
+                        'dns_time': standard_timings.get('dns_time', 0) * 1000,
+                        'tcp_handshake': standard_timings.get('tcp_handshake', 0) * 1000,
+                        'ssl_handshake': standard_timings.get('ssl_handshake', 0) * 1000,
+                        'request_send': standard_timings.get('request_send', 0) * 1000,
+                        'server_processing': standard_timings.get('server_processing', 0) * 1000,
+                        'response_transfer': standard_timings.get('response_transfer', 0) * 1000,
+                        'total_time': standard_timings.get('total_time', 0) * 1000
+                    }
+
+                # 然后获取精确时间
+                precise_timings = self.analyzer.calculate_precise_timings(start_time, standard_timings)
+                if precise_timings:
+                    timing_data['precise'] = precise_timings
+
             if timing_data:
                 result['timings'] = timing_data
-
-            # 添加回调信息
-            if callback_timings:
-                result['callback'] = callback_timings
 
             # 保存结果（如果需要）
             if save_result:
@@ -326,6 +325,27 @@ class GeminiAnalyzer:
                 self._save_single_result(error_result, image_path, prompt_name)
             return error_result
 
+    def _extract_standard_timings(self, curl_obj) -> Dict[str, float]:
+        """提取标准时间信息（用于精确模式对比）"""
+        timings = {
+            'namelookup_time': curl_obj.getinfo(pycurl.NAMELOOKUP_TIME),
+            'connect_time': curl_obj.getinfo(pycurl.CONNECT_TIME),
+            'appconnect_time': curl_obj.getinfo(pycurl.APPCONNECT_TIME),
+            'pretransfer_time': curl_obj.getinfo(pycurl.PRETRANSFER_TIME),
+            'starttransfer_time': curl_obj.getinfo(pycurl.STARTTRANSFER_TIME),
+            'total_time': curl_obj.getinfo(pycurl.TOTAL_TIME),
+        }
+
+        # 计算各个阶段时间
+        timings['dns_time'] = timings['namelookup_time']
+        timings['tcp_handshake'] = timings['connect_time'] - timings['namelookup_time']
+        timings['ssl_handshake'] = timings['appconnect_time'] - timings['connect_time']
+        timings['request_send'] = timings['pretransfer_time'] - timings['appconnect_time']
+        timings['server_processing'] = timings['starttransfer_time'] - timings['pretransfer_time']
+        timings['response_transfer'] = timings['total_time'] - timings['starttransfer_time']
+
+        return timings
+
     def _save_single_result(self, result: Dict[str, Any], image_path: str, prompt_name: str = None):
         """保存单个分析结果到 JSON 文件"""
         try:
@@ -346,28 +366,6 @@ class GeminiAnalyzer:
 
         except Exception as e:
             logger.error(f"保存单个分析结果失败: {e}")
-
-    def _extract_timing_info(self, curl_obj) -> Dict[str, float]:
-        """提取标准时间信息"""
-        timings = {
-            'namelookup_time': curl_obj.getinfo(pycurl.NAMELOOKUP_TIME),
-            'connect_time': curl_obj.getinfo(pycurl.CONNECT_TIME),
-            'appconnect_time': curl_obj.getinfo(pycurl.APPCONNECT_TIME),
-            'pretransfer_time': curl_obj.getinfo(pycurl.PRETRANSFER_TIME),
-            'starttransfer_time': curl_obj.getinfo(pycurl.STARTTRANSFER_TIME),
-            'total_time': curl_obj.getinfo(pycurl.TOTAL_TIME),
-            'redirect_time': curl_obj.getinfo(pycurl.REDIRECT_TIME),
-        }
-
-        # 计算衍生时间指标
-        timings['dns_time'] = timings['namelookup_time']
-        timings['tcp_handshake'] = timings['connect_time'] - timings['namelookup_time']
-        timings['ssl_handshake'] = timings['appconnect_time'] - timings['connect_time']
-        timings['request_send'] = timings['pretransfer_time'] - timings['appconnect_time']
-        timings['server_processing'] = timings['starttransfer_time'] - timings['pretransfer_time']
-        timings['response_transfer'] = timings['total_time'] - timings['starttransfer_time']
-
-        return timings
 
     def _parse_response(self, response_body: str, http_code: int) -> Dict[str, Any]:
         """解析 API 响应"""
@@ -402,42 +400,78 @@ class GeminiAnalyzer:
 
     def print_timing_analysis(self, result: Dict):
         """打印时间分析结果"""
-        if 'timings' in result:
-            print("标准时间分析:")
-            print(format_timing_results(result['timings'].get('standard', {})))
+        if 'timings' not in result:
+            print("无时间分析数据")
+            return
 
-            if 'precise' in result['timings']:
-                print("\n精确时间分析 (基于回调):")
-                self._print_precise_timing_analysis(result['timings']['precise'])
+        timing_mode = result.get('timing_mode', 'unknown')
+        print("=" * 60)
+        print(f"时间分析结果 - 模式: {timing_mode}")
+        print("=" * 60)
 
-            if 'callback' in result:
-                self._print_callback_analysis(result['callback'])
-            print()
+        # 显示标准时间信息（两种模式都有）
+        if 'standard' in result['timings']:
+            standard = result['timings']['standard']
+            print("标准时间信息:")
+            print(f"  DNS解析时间: {standard.get('dns_time', 0):.1f} ms")
+            print(f"  TCP握手时间: {standard.get('tcp_handshake', 0):.1f} ms")
+            print(f"  SSL握手时间: {standard.get('ssl_handshake', 0):.1f} ms")
+            print(f"  请求发送时间: {standard.get('request_send', 0):.1f} ms")
+            print(f"  服务器处理时间: {standard.get('server_processing', 0):.1f} ms")
+            print(f"  响应传输时间: {standard.get('response_transfer', 0):.1f} ms")
+            print(f"  总时间: {standard.get('total_time', 0):.1f} ms")
 
-    def _print_precise_timing_analysis(self, timings: Dict):
-        """打印精确时间分析"""
-        timing_items = [
-            ("DNS解析时间", timings.get('dns_resolution', 0)),
-            ("TCP握手时间", timings.get('tcp_handshake', 0)),
-            ("SSL握手时间", timings.get('ssl_handshake', 0)),
-            ("请求头发送时间", timings.get('request_header_send', 0)),
-            ("请求体上传时间", timings.get('request_body_upload', 0)),
-            ("服务器处理时间", timings.get('server_processing', 0)),
-            ("响应接收时间", timings.get('response_receive', 0)),
-            ("总时间", timings.get('total', 0))
-        ]
+        # 显示精确模式的结果
+        if timing_mode == 'precise' and 'precise' in result['timings']:
+            precise = result['timings']['precise']
+            print("\n精确时间信息（基于回调）:")
 
-        for name, value in timing_items:
-            if value > 0:
-                print(f"{name}: {value:.1f} ms")
+            if 'request_body_send_time' in precise:
+                print(f"  请求体发送完成时间: {precise['request_body_send_time']:.1f} ms")
 
-    def _print_callback_analysis(self, callback_data: Dict):
-        """打印回调分析"""
-        print("\n回调机制分析:")
-        stats = callback_data.get('callback_stats', {})
-        print(f"总回调次数: {callback_data.get('total_callbacks', 0)}")
-        print(f"进度回调: {stats.get('progress_callbacks', 0)} 次")
-        print(f"写入回调: {stats.get('write_callbacks', 0)} 次")
-        print(f"头部回调: {stats.get('header_callbacks', 0)} 次")
-        print(f"调试回调: {stats.get('debug_callbacks', 0)} 次")
-        print(f"使用的回调方法: {', '.join(stats.get('callback_methods_used', []))}")
+            if 'server_processing_time' in precise:
+                print(f"  服务器处理时间: {precise['server_processing_time']:.1f} ms")
+
+                # 与标准时间对比
+                if 'standard_comparison' in precise:
+                    comparison = precise['standard_comparison']
+                    if 'server_processing_diff' in comparison:
+                        diff = comparison['server_processing_diff']
+                        print(f"  与标准时间差异: {diff:+.1f} ms")
+
+            # 回调统计
+            if 'callback_stats' in precise:
+                stats = precise['callback_stats']
+                print(f"  进度回调调用次数: {stats.get('progress_calls', 0)}")
+                print(f"  写入回调调用次数: {stats.get('write_calls', 0)}")
+
+        print()
+
+
+# 模式对比测试
+def mode_comparison():
+    """对比两种模式的差异"""
+    print("时间模式对比测试")
+    print("=" * 60)
+
+    modes = ['standard', 'precise']
+
+    for mode in modes:
+        print(f"\n测试模式: {mode}")
+
+        analyzer = GeminiAnalyzer(timing_mode=mode)
+        start = time.perf_counter()
+        result = analyzer.analyze_image("test.jpg", "color_detection", save_result=False)
+        end = time.perf_counter()
+
+        if result.get('success'):
+            print(f"请求耗时: {(end - start) * 1000:.1f} ms")
+            print(f"识别结果: {result.get('response_text')}")
+            analyzer.print_timing_analysis(result)
+        else:
+            print(f"请求失败: {result.get('error')}")
+
+
+if __name__ == "__main__":
+    # 运行模式对比测试
+    mode_comparison()

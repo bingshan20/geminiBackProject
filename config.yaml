@@ -11,11 +11,6 @@ images:
   # 要处理的图片列表（支持通配符）
   files:
     - "1.png"
-    - "2.png"
-    - "4.png"
-    - "5.png"
-    - "6.png"
-    - "7.png"
 #    - "8.png"
 #    - "9.png"
 #    - "*.png"  # 匹配所有png文件

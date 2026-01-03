@@ -33,6 +33,8 @@ def main():
     parser.add_argument('--list-prompts', action='store_true', help='列出所有可用的 prompt')
     parser.add_argument('--multi-prompt', action='store_true', help='使用所有 prompt 处理图片')
     parser.add_argument('--output', '-o', type=str, help='输出结果文件名')
+    parser.add_argument('--timing-mode', type=str, choices=['standard', 'precise'],
+                       default='standard', help='时间分析模式: standard(标准) 或 precise(精确)')
 
     args = parser.parse_args()
 
@@ -49,20 +51,20 @@ def main():
             # 使用所有可用的 prompt
             available_prompts = config.get_available_prompts()
             prompt_names = list(available_prompts.keys())
-            analyze_single_image_multiple_prompts(args.image, prompt_names)
+            analyze_single_image_multiple_prompts(args.image, prompt_names, args.timing_mode)
         else:
             # 单 prompt 处理
-            analyze_single_image(args.image, args.prompt, True)
+            analyze_single_image(args.image, args.prompt, True, args.timing_mode)
         return
 
     # 批量处理
     if args.all or not args.image:
         if args.multi_prompt:
             # 多 prompt 处理
-            process_with_multiple_prompts(args.output)
+            process_with_multiple_prompts(args.output, args.timing_mode)
         else:
             # 单 prompt 批量处理
-            process_batch_images(args.prompt, args.output)
+            process_batch_images(args.prompt, args.output, args.timing_mode)
 
 
 def list_available_prompts():
@@ -79,9 +81,9 @@ def list_available_prompts():
         print("-" * 30)
 
 
-def analyze_single_image(image_name: str, prompt_name: str = None, save_result: bool = False):
+def analyze_single_image(image_name: str, prompt_name: str = None, save_result: bool = False, timing_mode: str = 'standard'):
     """分析单个图片"""
-    analyzer = GeminiAnalyzer()
+    analyzer = GeminiAnalyzer(timing_mode=timing_mode)
 
     logger.info(f"开始分析单个图片: {image_name}")
 
@@ -97,9 +99,9 @@ def analyze_single_image(image_name: str, prompt_name: str = None, save_result: 
     if 'timings' in result:
         analyzer.print_timing_analysis(result)
 
-def analyze_single_image_multiple_prompts(image_name: str, prompt_names: List[str] = None):
+def analyze_single_image_multiple_prompts(image_name: str, prompt_names: List[str] = None, timing_mode: str = 'standard'):
     """分析单个图片"""
-    analyzer = GeminiAnalyzer()
+    analyzer = GeminiAnalyzer(timing_mode=timing_mode)
     logger.info(f"开始分析单个图片: {image_name}")
 
     for prompt_name in prompt_names:
@@ -116,9 +118,9 @@ def analyze_single_image_multiple_prompts(image_name: str, prompt_names: List[st
             analyzer.print_timing_analysis(result)
 
 
-def process_batch_images(prompt_name: str = None, output_filename: str = None):
+def process_batch_images(prompt_name: str = None, output_filename: str = None, timing_mode: str = 'standard'):
     """批量处理图片"""
-    processor = BatchProcessor()
+    processor = BatchProcessor(timing_mode=timing_mode)
 
     logger.info("开始批量处理图片...")
 
@@ -145,9 +147,9 @@ def process_batch_images(prompt_name: str = None, output_filename: str = None):
         logger.error("批量处理失败，没有生成结果")
 
 
-def process_with_multiple_prompts(output_filename: str = None):
+def process_with_multiple_prompts(output_filename: str = None, timing_mode: str = 'standard'):
     """使用多个 prompt 处理图片"""
-    processor = BatchProcessor()
+    processor = BatchProcessor(timing_mode=timing_mode)
 
     logger.info("开始多 prompt 批量处理...")
 
