@@ -238,17 +238,12 @@ class GeminiAnalyzer:
 
             # 记录开始时间（精确模式需要）
             start_time = time.perf_counter() if self.timing_mode == 'precise' else None
-
             # 执行请求
             c.perform()
-
             # 获取 HTTP 状态码
             http_code = c.getinfo(pycurl.RESPONSE_CODE)
-
             # 获取响应
             response_bytes = self.analyzer.get_response_data()
-            c.close()
-
             if not response_bytes:
                 error_msg = "响应体为空"
                 logger.error(error_msg)
@@ -258,10 +253,8 @@ class GeminiAnalyzer:
                 return error_result
 
             response_body = response_bytes.decode('utf-8')
-
             # 解析响应
             result = self._parse_response(response_body, http_code)
-
             # 添加元数据
             result.update({
                 'image_file': image_path,
@@ -299,6 +292,8 @@ class GeminiAnalyzer:
                 precise_timings = self.analyzer.calculate_precise_timings(start_time, standard_timings)
                 if precise_timings:
                     timing_data['precise'] = precise_timings
+            # 关闭 curl 对象
+            c.close()
 
             if timing_data:
                 result['timings'] = timing_data
