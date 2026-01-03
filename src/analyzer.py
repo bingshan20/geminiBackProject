@@ -35,8 +35,8 @@ class StandardTimingAnalyzer:
         """重置分析器状态"""
         self.buffer = BytesIO()
 
-    def calculate_timings(self, curl_obj):
-        """基于pycurl标准API计算时间"""
+    def calculate_timings(self, curl_obj, request_body_size: int = 0):
+        """基于pycurl标准API计算时间，包含上传时间估算"""
         # 直接从curl对象获取时间信息
         timings = {
             'dns_time': curl_obj.getinfo(pycurl.NAMELOOKUP_TIME) * 1000,
@@ -52,6 +52,36 @@ class StandardTimingAnalyzer:
                                   curl_obj.getinfo(pycurl.STARTTRANSFER_TIME)) * 1000,
             'total_time': curl_obj.getinfo(pycurl.TOTAL_TIME) * 1000
         }
+
+        # 如果提供了请求体大小，添加上传时间估算
+        if request_body_size > 0:
+            # 尝试获取实际上传速度
+            try:
+                upload_speed = curl_obj.getinfo(pycurl.SPEED_UPLOAD)  # 字节/秒
+            except:
+                upload_speed = 0
+
+            # 估算上传时间
+            estimated_upload_time = 0
+            if upload_speed > 0:
+                estimated_upload_time = request_body_size / upload_speed * 1000  # 转换为毫秒
+            else:
+                # 基于经验估算
+                if request_body_size < 1024:  # 小于1KB
+                    estimated_upload_time = 10  # 10ms
+                elif request_body_size < 10240:  # 小于10KB
+                    estimated_upload_time = 50  # 50ms
+                else:
+                    estimated_upload_time = 100  # 100ms
+
+            # 添加上传估算信息（不调整服务器处理时间）
+            timings.update({
+                'upload_size': request_body_size,
+                'upload_speed': upload_speed,
+                'estimated_upload_time': estimated_upload_time,
+                'upload_estimation_quality': 'measured' if upload_speed > 0 else 'estimated'
+            })
+
         return timings
 
 
@@ -79,7 +109,7 @@ class PreciseTimingAnalyzer:
         self.callback_stats['progress_calls'] += 1
 
         # 只在上传完成且尚未记录时记录一次
-        if  not self.request_body_sent and ultotal > 0 and ulnow >= ultotal:
+        if not self.request_body_sent and ultotal > 0 and ulnow >= ultotal:
             self.key_events['request_body_sent'] = time.perf_counter()
             self.request_body_sent = True
 
@@ -124,7 +154,8 @@ class PreciseTimingAnalyzer:
 
         # 计算服务器处理时间（从请求体发送完成到收到第一个字节）
         if self.key_events['request_body_sent'] and self.key_events['first_byte_received']:
-            precise_timings['server_processing_time'] = (self.key_events['first_byte_received'] - self.key_events['request_body_sent']) * 1000
+            precise_timings['server_processing_time'] = (self.key_events['first_byte_received'] - self.key_events[
+                'request_body_sent']) * 1000
 
         # 添加回调统计
         precise_timings['callback_stats'] = self.callback_stats.copy()
@@ -132,7 +163,7 @@ class PreciseTimingAnalyzer:
         # 与标准时间对比
         if standard_timings:
             precise_timings['standard_comparison'] = {
-                'standard_server_processing': standard_timings.get('server_processing', 0) * 1000
+                'standard_server_processing': standard_timings.get('server_processing', 0)
             }
 
             # 计算差异
@@ -202,6 +233,7 @@ class GeminiAnalyzer:
         }
 
         data = json.dumps(payload)
+        request_body_size = len(data)  # 获取请求体大小
 
         # 创建 curl 对象
         c = pycurl.Curl()
@@ -238,12 +270,16 @@ class GeminiAnalyzer:
 
             # 记录开始时间（精确模式需要）
             start_time = time.perf_counter() if self.timing_mode == 'precise' else None
+
             # 执行请求
             c.perform()
+
             # 获取 HTTP 状态码
             http_code = c.getinfo(pycurl.RESPONSE_CODE)
+
             # 获取响应
             response_bytes = self.analyzer.get_response_data()
+
             if not response_bytes:
                 error_msg = "响应体为空"
                 logger.error(error_msg)
@@ -253,8 +289,10 @@ class GeminiAnalyzer:
                 return error_result
 
             response_body = response_bytes.decode('utf-8')
+
             # 解析响应
             result = self._parse_response(response_body, http_code)
+
             # 添加元数据
             result.update({
                 'image_file': image_path,
@@ -268,33 +306,25 @@ class GeminiAnalyzer:
             timing_data = {}
 
             if self.timing_mode == 'standard':
-                # 标准模式：使用pycurl标准API计算时间
-                standard_timings = self.analyzer.calculate_timings(c)
+                # 标准模式：使用pycurl标准API计算时间，包含上传估算
+                standard_timings = self.analyzer.calculate_timings(c, request_body_size)
                 if standard_timings:
                     timing_data['standard'] = standard_timings
 
             else:  # precise模式
                 # 精确模式：使用回调记录的关键事件计算时间
                 # 首先获取标准时间作为参考
-                standard_timings = self._extract_standard_timings(c)
+                standard_timings = self._extract_standard_timings(c, request_body_size)
                 if standard_timings:
-                    timing_data['standard'] = {
-                        'dns_time': standard_timings.get('dns_time', 0) * 1000,
-                        'tcp_handshake': standard_timings.get('tcp_handshake', 0) * 1000,
-                        'ssl_handshake': standard_timings.get('ssl_handshake', 0) * 1000,
-                        'request_send': standard_timings.get('request_send', 0) * 1000,
-                        'server_processing': standard_timings.get('server_processing', 0) * 1000,
-                        'response_transfer': standard_timings.get('response_transfer', 0) * 1000,
-                        'total_time': standard_timings.get('total_time', 0) * 1000
-                    }
+                    timing_data['standard'] = standard_timings
 
                 # 然后获取精确时间
                 precise_timings = self.analyzer.calculate_precise_timings(start_time, standard_timings)
                 if precise_timings:
                     timing_data['precise'] = precise_timings
+
             # 关闭 curl 对象
             c.close()
-
             if timing_data:
                 result['timings'] = timing_data
 
@@ -320,7 +350,7 @@ class GeminiAnalyzer:
                 self._save_single_result(error_result, image_path, prompt_name)
             return error_result
 
-    def _extract_standard_timings(self, curl_obj) -> Dict[str, float]:
+    def _extract_standard_timings(self, curl_obj, request_body_size: int = 0) -> Dict[str, float]:
         """提取标准时间信息（用于精确模式对比）"""
         timings = {
             'namelookup_time': curl_obj.getinfo(pycurl.NAMELOOKUP_TIME),
@@ -338,6 +368,35 @@ class GeminiAnalyzer:
         timings['request_send'] = timings['pretransfer_time'] - timings['appconnect_time']
         timings['server_processing'] = timings['starttransfer_time'] - timings['pretransfer_time']
         timings['response_transfer'] = timings['total_time'] - timings['starttransfer_time']
+
+        # 转换为毫秒
+        for key in list(timings.keys()):
+            timings[key] = timings[key] * 1000
+
+        # 添加上传估算信息
+        if request_body_size > 0:
+            try:
+                upload_speed = curl_obj.getinfo(pycurl.SPEED_UPLOAD)  # 字节/秒
+            except:
+                upload_speed = 0
+
+            estimated_upload_time = 0
+            if upload_speed > 0:
+                estimated_upload_time = request_body_size / upload_speed * 1000  # 转换为毫秒
+            else:
+                if request_body_size < 1024:
+                    estimated_upload_time = 10
+                elif request_body_size < 10240:
+                    estimated_upload_time = 50
+                else:
+                    estimated_upload_time = 100
+
+            timings.update({
+                'upload_size': request_body_size,
+                'upload_speed': upload_speed,
+                'estimated_upload_time': estimated_upload_time,
+                'upload_estimation_quality': 'measured' if upload_speed > 0 else 'estimated'
+            })
 
         return timings
 
@@ -411,10 +470,19 @@ class GeminiAnalyzer:
             print(f"  DNS解析时间: {standard.get('dns_time', 0):.1f} ms")
             print(f"  TCP握手时间: {standard.get('tcp_handshake', 0):.1f} ms")
             print(f"  SSL握手时间: {standard.get('ssl_handshake', 0):.1f} ms")
-            print(f"  请求发送时间: {standard.get('request_send', 0):.1f} ms")
+            print(f"  请求头发送时间: {standard.get('request_send', 0):.1f} ms")
             print(f"  服务器处理时间: {standard.get('server_processing', 0):.1f} ms")
             print(f"  响应传输时间: {standard.get('response_transfer', 0):.1f} ms")
             print(f"  总时间: {standard.get('total_time', 0):.1f} ms")
+
+            # 显示上传估算信息
+            if 'estimated_upload_time' in standard:
+                quality = standard.get('upload_estimation_quality', 'estimated')
+                quality_text = '基于实际速度' if quality == 'measured' else '基于经验估算'
+                print(f"  请求体上传估算: {standard.get('estimated_upload_time', 0):.1f} ms ({quality_text})")
+                print(f"  请求体大小: {standard.get('upload_size', 0)} 字节")
+                if standard.get('upload_speed', 0) > 0:
+                    print(f"  实际上传速度: {standard.get('upload_speed', 0) / 1024:.1f} KB/s")
 
         # 显示精确模式的结果
         if timing_mode == 'precise' and 'precise' in result['timings']:
@@ -441,32 +509,3 @@ class GeminiAnalyzer:
                 print(f"  写入回调调用次数: {stats.get('write_calls', 0)}")
 
         print()
-
-
-# 模式对比测试
-def mode_comparison():
-    """对比两种模式的差异"""
-    print("时间模式对比测试")
-    print("=" * 60)
-
-    modes = ['standard', 'precise']
-
-    for mode in modes:
-        print(f"\n测试模式: {mode}")
-
-        analyzer = GeminiAnalyzer(timing_mode=mode)
-        start = time.perf_counter()
-        result = analyzer.analyze_image("test.jpg", "color_detection", save_result=False)
-        end = time.perf_counter()
-
-        if result.get('success'):
-            print(f"请求耗时: {(end - start) * 1000:.1f} ms")
-            print(f"识别结果: {result.get('response_text')}")
-            analyzer.print_timing_analysis(result)
-        else:
-            print(f"请求失败: {result.get('error')}")
-
-
-if __name__ == "__main__":
-    # 运行模式对比测试
-    mode_comparison()
