@@ -74,8 +74,20 @@ class StandardTimingAnalyzer:
                 else:
                     estimated_upload_time = 100  # 100ms
 
+            # 下载时间
+            try:
+                download_speed = curl_obj.getinfo(pycurl.SPEED_DOWNLOAD)
+            except:
+                download_speed = 0
+            try:
+                size_download = curl_obj.getinfo(pycurl.SIZE_DOWNLOAD)
+            except:
+                size_download = 0
+
             # 添加上传估算信息（不调整服务器处理时间）
             timings.update({
+                'download_size': size_download,
+                'download_speed': download_speed,
                 'upload_size': request_body_size,
                 'upload_speed': upload_speed,
                 'estimated_upload_time': estimated_upload_time,
