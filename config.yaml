@@ -53,8 +53,8 @@ output:
     generate_summary: true
 
 network:
-  speed: 20  #标准带宽速度，单位Mbps
-  latency: 4.2  # 单向网络延迟
+  bandwidth_mbps: 20  #标准带宽速度，单位Mbps
+  one_way_latency_ms: 4.2  # 单向网络延迟
 
 # 性能分析配置
 performance:
