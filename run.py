@@ -23,7 +23,7 @@ def check_environment():
     print(f"✅ Python 版本: {sys.version}")
 
     # 检查必要的目录
-    necessary_dirs = ['src/img', 'results', 'logs']
+    necessary_dirs = ['src/img_en', 'results', 'logs']
     for dir_name in necessary_dirs:
         dir_path = Path(__file__).parent / dir_name
         if not dir_path.exists():

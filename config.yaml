@@ -16,7 +16,7 @@ images:
 #    - "*.png"  # 匹配所有png文件
 
   # 图片目录（相对于src目录）
-  directory: "img"
+  directory: "img_en"
 
   # 支持的图片格式
   supported_formats: [".png", ".jpg"]
