@@ -631,13 +631,13 @@ class GeminiAnalyzer:
         if 'standard' in result['timings']:
             standard = result['timings']['standard']
             print("标准时间信息:")
-            print(f"  DNS解析时间: {standard.get('dns_time', 0):..1f} ms")
-            print(f"  TCP握手时间: {standard.get('tcp_handshake', 0):.1f} ms")
-            print(f"  SSL握手时间: {standard.get('ssl_handshake', 0):.1f} ms")
-            print(f"  请求头发送时间: {standard.get('request_send', 0):.1f} ms")
-            print(f"  服务器处理时间: {standard.get('server_processing', 0):.1f} ms")
-            print(f"  响应传输时间: {standard.get('response_transfer', 0):.1f} ms")
-            print(f"  总时间: {standard.get('total_time', 0):.1f} ms")
+            print(f"  DNS解析时间: {standard.get('dns_time', 0):.3f} ms")
+            print(f"  TCP握手时间: {standard.get('tcp_handshake', 0):.3f} ms")
+            print(f"  SSL握手时间: {standard.get('ssl_handshake', 0):.3f} ms")
+            print(f"  请求头发送时间: {standard.get('request_send', 0):.3f} ms")
+            print(f"  服务器处理时间: {standard.get('server_processing', 0):.3f} ms")
+            print(f"  响应传输时间: {standard.get('response_transfer', 0):.3f} ms")
+            print(f"  总时间: {standard.get('total_time', 0):.3f} ms")
 
             # 显示上传估算信息
             if 'estimated_upload_time' in standard:
@@ -646,18 +646,19 @@ class GeminiAnalyzer:
                 print(f"  请求体上传估算: {standard.get('estimated_upload_time', 0):.1f} ms ({quality_text})")
                 print(f"  请求体大小: {standard.get('upload_size', 0)} 字节")
                 if standard.get('upload_speed', 0) > 0:
-                    print(f"  实际上传速度: {standard.get('upload_speed', 0) / 1024:.1f} KB/s")
+                    print(f"  实际上传速度: {standard.get('upload_speed', 0) / 1024:.3f} KB/s")
 
             # 显示带宽约束信息
             if 'theoretical_upload_time' in standard:
                 print("\n带宽约束分析:")
-                print(f"  理论上行时间: {standard.get('theoretical_upload_time', 0):.1f} ms")
-                print(f"  网络延迟: {standard.get('network_latency', 0):.1f} ms")
+                print(f"  理论上行时间: {standard.get('theoretical_upload_time', 0):.3f} ms")
+                print(f"  网络延迟: {standard.get('network_latency', 0):.3f} ms")
 
                 if 'network_efficiency' in standard:
                     efficiency = standard['network_efficiency']
                     print(
-                        f"  网络效率: {efficiency.get('efficiency_percent', 0):.1f}% ({efficiency.get('efficiency_status', 'unknown')})")
+                        f"  网络效率: {efficiency.get('efficiency_percent', 0):.3f}% "
+                        f"({efficiency.get('efficiency_status', 'unknown')})")
 
                 if 'anomalies_detected' in standard and standard['anomalies_detected']:
                     print("  检测到异常:")
@@ -670,22 +671,22 @@ class GeminiAnalyzer:
             print("\n精确时间信息（基于回调）:")
 
             if 'request_body_send_time' in precise:
-                print(f"  请求体发送完成时间: {precise['request_body_send_time']:.1f} ms")
+                print(f"  请求体发送完成时间: {precise['request_body_send_time']:.3f} ms")
 
             if 'server_processing_time' in precise:
-                print(f"  服务器处理时间: {precise['server_processing_time']:.1f} ms")
+                print(f"  服务器处理时间: {precise['server_processing_time']:.3f} ms")
 
                 # 与标准时间对比
                 if 'standard_comparison' in precise:
                     comparison = precise['standard_comparison']
                     if 'server_processing_diff' in comparison:
                         diff = comparison['server_processing_diff']
-                        print(f"  与标准时间差异: {diff:+.1f} ms")
+                        print(f"  与标准时间差异: {diff:+.3f} ms")
 
             # 带宽约束信息
             if 'theoretical_upload_time' in precise:
-                print(f"  理论上行时间: {precise['theoretical_upload_time']:.1f} ms")
-                print(f"  网络延迟: {precise.get('network_latency', 0):.1f} ms")
+                print(f"  理论上行时间: {precise['theoretical_upload_time']:.3f} ms")
+                print(f"  网络延迟: {precise.get('network_latency', 0):.3f} ms")
 
             # 回调统计
             if 'callback_stats' in precise:
