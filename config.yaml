@@ -52,6 +52,10 @@ output:
     include_timing: true
     generate_summary: true
 
+network:
+  speed: 20  #标准带宽速度，单位Mbps
+  latency: 4.2  # 单向网络延迟
+
 # 性能分析配置
 performance:
   enable_timing: true

@@ -37,7 +37,7 @@ class Config:
     def _validate_config(self):
         """验证配置"""
         # 必须的配置项
-        required_sections = ['api', 'images', 'prompts', 'output']
+        required_sections = ['api', 'images', 'prompts', 'output', 'performance', 'network']
         for section in required_sections:
             if section not in self._config:
                 raise ValueError(f"配置文件中缺少必要的段: {section}")
@@ -80,6 +80,16 @@ class Config:
     def supported_formats(self) -> List[str]:
         """获取支持的图片格式"""
         return self._config['images']['supported_formats']
+
+    @property
+    def get_bandwidth_mbps(self) -> int:
+        """获取带宽"""
+        return self._config['network']['bandwidth_mbps']
+
+    @property
+    def get_one_way_latency_ms(self) -> float:
+        """获取单向网络延迟"""
+        return self._config['network']['one_way_latency_ms']
 
     @property
     def default_prompt(self) -> str:
