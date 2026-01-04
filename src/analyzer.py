@@ -39,8 +39,8 @@ class StandardTimingAnalyzer:
         """基于pycurl标准API计算时间，包含上传时间估算"""
         # 直接从curl对象获取时间信息
         timings = {
-            'pretransfer_time': curl_obj.getinfo(pycurl.PRETRANSFER_TIME_T),
-            'startTransfer_time': curl_obj.getinfo(pycurl.STARTTRANSFER_TIME_T),
+            'pretransfer_time': curl_obj.getinfo(pycurl.PRETRANSFER_TIME) * 1000,
+            'startTransfer_time': curl_obj.getinfo(pycurl.STARTTRANSFER_TIME) * 1000,
             'dns_time': curl_obj.getinfo(pycurl.NAMELOOKUP_TIME) * 1000,
             'tcp_handshake': (curl_obj.getinfo(pycurl.CONNECT_TIME) -
                               curl_obj.getinfo(pycurl.NAMELOOKUP_TIME)) * 1000,
