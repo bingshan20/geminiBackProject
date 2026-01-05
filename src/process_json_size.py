@@ -38,11 +38,10 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
     fieldnames = [
         'image_file', 'prompt_used', 'response_text',
         'namelookup_time', 'connect_time', 'appconnect_time',
-        'pretransfer_time', 'starttransfer_time', 'total_time',
+        'pretransfer_time', 'startTransfer_time', 'total_time',
         'redirect_time', 'dns_time', 'tcp_handshake',
         'ssl_handshake', 'request_send', 'server_processing', 'response_transfer',
-        'download_size', 'upload_size', 'pretransfer_time', 'startTransfer_time',
-        'theoretical_upload_time'
+        'download_size', 'upload_size','theoretical_upload_time'
     ]
 
     # 统计信息
@@ -95,7 +94,11 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
                     timings = timings['standard']
                     for field in fieldnames[3:]:
                         if field in timings:
-                            row_data[field] = timings[field]
+                            value = timings[field]
+                            if isinstance(value, (int, float)):
+                                row_data[field] = round(float(value), 4)
+                            else:
+                                row_data[field] = value
                         else:
                             row_data[field] = 0
                 else:
@@ -218,8 +221,8 @@ def get_sorting_options():
 
 # 使用示例
 if __name__ == "__main__":
-    json_folder = input("JSON文件夹路径 (默认:../json_files/0104): ").strip() or "../json_files/0104"
-    output_csv = input("输出CSV路径 (默认: ../json_files/csv/output4.csv): ").strip() or "../json_files/csv/output4.csv"
+    json_folder = input("JSON文件夹路径 (默认:../json_files/0105en): ").strip() or "../json_files/0105en"
+    output_csv = input("输出CSV路径 (默认: ../json_files/csv/output5.csv): ").strip() or "../json_files/csv/output5.csv"
 
     sort_method, secondary_sort = get_sorting_options()
 

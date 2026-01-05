@@ -38,9 +38,12 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
     fieldnames = [
         'image_file', 'prompt_used', 'response_text',
         'namelookup_time', 'connect_time', 'appconnect_time',
-        'pretransfer_time', 'starttransfer_time', 'total_time',
+        'pretransfer_time', 'startTransfer_time', 'total_time',
         'redirect_time', 'dns_time', 'tcp_handshake',
-        'ssl_handshake', 'request_send', 'server_processing', 'response_transfer'
+        'ssl_handshake', 'request_send', 'server_processing', 'response_transfer',
+        'download_size', 'upload_size','theoretical_upload_time',
+        'namelookup_time', 'appconnect_time', 'request_body_send_time','server_processing_time',
+        'callback_stats'
     ]
 
     # 统计信息
@@ -72,9 +75,12 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
 
                 # 检查timings字段（可选，但如果有的话需要处理）
                 has_timings = 'timings' in data
+                timings = {}
                 if not has_timings:
                     stats['no_timings'] += 1
                     print(f"警告: {filename} 缺少timings字段")
+                else:
+                    timings = data['timings']
 
                 # 提取数据
                 row_data = {
@@ -83,15 +89,16 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
                     'response_text': data['response_text']
                 }
 
+                # 获取标准数据
+                has_std_timings = 'standard' in timings
                 # 提取timings并转换为微秒（如果有的话）
-                if has_timings:
-                    timings = data['timings']
+                if has_std_timings:
+                    timings = timings['standard']
                     for field in fieldnames[3:]:
                         if field in timings:
-                            # 统一处理数值，如果是数字类型就保留3位小数
                             value = timings[field]
                             if isinstance(value, (int, float)):
-                                row_data[field] = round(float(value) * 1000, 4)
+                                row_data[field] = round(float(value), 4)
                             else:
                                 row_data[field] = value
                         else:
@@ -99,6 +106,28 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
                 else:
                     # 如果没有timings，填充默认值
                     for field in fieldnames[3:]:
+                        row_data[field] = 0
+
+                #获取精准数据
+                has_precise_timings = 'precise' in timings
+                if has_precise_timings:
+                    precise_timings = timings['precise']
+                    for field in fieldnames[21:]:
+                        if field in precise_timings:
+                            if field != 'callback_stats':
+                                value = precise_timings[field]
+                                if isinstance(value, (int, float)):
+                                    row_data[field] = round(float(value), 4)
+                                else:
+                                    row_data[field] = value
+                            else:
+                                callback_stats = timings['callback_stats']
+                                row_data[field] = callback_stats['progress_calls'] + callback_stats['write_calls']
+                        else:
+                            row_data[field] = 0
+                else:
+                    #如果没有timings，填充默认值
+                    for field in fieldnames[21:]:
                         row_data[field] = 0
 
                 all_data.append(row_data)
@@ -216,8 +245,8 @@ def get_sorting_options():
 
 # 使用示例
 if __name__ == "__main__":
-    json_folder = input("JSON文件夹路径 (默认:../json_files/0101): ").strip() or "../json_files/0101"
-    output_csv = input("输出CSV路径 (默认: ../json_files/csv/output1.csv): ").strip() or "../json_files/csv/output1.csv"
+    json_folder = input("JSON文件夹路径 (默认:../json_files/0106en_c): ").strip() or "../json_files/0106en_c"
+    output_csv = input("输出CSV路径 (默认: ../json_files/csv/output6.csv): ").strip() or "../json_files/csv/output6.csv"
 
     sort_method, secondary_sort = get_sorting_options()
 
