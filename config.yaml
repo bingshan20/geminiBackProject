@@ -49,11 +49,19 @@ prompts:
     color_detection_speed_simple:
       name: "颜色检测-速度-简单"
       text: "Ignore the word, state the color. One word."
+      temperature: 0.05 # 温度高，则有更高的多样性，但速度会慢
+      top_p: 0.8  # 数值大，则考虑更多候选词
+      top_k: 20 # 考虑更多候选词
+      max_tokens: 5 # maxToken数
       description: "检测图片中文字的颜色--强调速度"
 
     color_detection_accuracy_simple:
       name: "颜色检测-准确-简单"
       text: "Carefully state the color of the word, ignoring the text. One word."
+      temperature: 0.4
+      top_p: 0.95
+      top_k: 50
+      max_tokens: 5
       description: "检测图片中文字的颜色--强调准确"
 
 # 输出配置
