@@ -23,20 +23,32 @@ def extract_number_from_filename(filename):
     numbers = re.findall(r'\d+', filename)
     return int(numbers[0]) if numbers else float('inf')
 
+def load_reference_table_en():
+    """
+    建立image_file到word和actual_color的映射——英文
+    """
+    reference_map = {"1.png": {'word': "balcony", 'actual_color': "blue"},
+                     "2.png": {'word': "table", 'actual_color': "blue"},
+                     "3.png": {'word': "yellow", 'actual_color': "blue"},
+                     "4.png": {'word': "Orange", 'actual_color': "orange"},
+                     "5.png": {'word': "blue", 'actual_color': "gold"},
+                     "6.png": {'word': "purple", 'actual_color': "purple"},
+                     "7.png": {'word': "Asia", 'actual_color': "purple"},
+                     "8.png": {'word': "red", 'actual_color': "red"},
+                     "9.png": {'word': "blue", 'actual_color': "red"}}
+    return reference_map
 
 def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', secondary_sort='prompt'):
     """
     批量处理JSON文件到CSV，支持多级排序
-
     Args:
         json_folder: JSON文件所在文件夹
         output_csv: 输出CSV文件路径
         sort_method: 主排序方式，可选 'natural', 'numeric', 'alphabetical'
         secondary_sort: 次级排序方式，可选 'prompt', 'none'
     """
-
     fieldnames = [
-        'image_file', 'prompt_used', 'response_text',
+        'image_file', 'prompt_used', 'response_text', 'word', 'actual_color',
         'namelookup_time', 'connect_time', 'appconnect_time',
         'pretransfer_time', 'startTransfer_time', 'total_time',
         'redirect_time', 'dns_time', 'tcp_handshake',
@@ -49,7 +61,8 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
     # 统计信息
     stats = defaultdict(int)
     all_data = []
-
+    # 加载参考表
+    reference_map = load_reference_table_en()
     # 获取JSON文件列表
     json_files = glob.glob(os.path.join(json_folder, "*.json"))
 
@@ -82,21 +95,37 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
                 else:
                     timings = data['timings']
 
+                # 从data中获取image_file
+                image_file = data['image_file']
+
+                # 从参考表中获取word和actual_color
+                reference_data = reference_map.get(image_file, {})
+                word = reference_data.get('word', '')
+                actual_color = reference_data.get('actual_color', '')
+
+                # 统计匹配情况
+                if word and actual_color:
+                    stats['matched_reference'] += 1
+                else:
+                    stats['unmatched_reference'] += 1
+
                 # 提取数据
                 row_data = {
-                    'image_file': data['image_file'],
+                    'image_file': image_file,
                     'prompt_used': data['prompt_used'],
-                    'response_text': data['response_text']
+                    'response_text': data['response_text'],
+                    'word': word,
+                    'actual_color': actual_color
                 }
 
                 # 获取标准数据
                 has_std_timings = 'standard' in timings
                 # 提取timings并转换为微秒（如果有的话）
                 if has_std_timings:
-                    timings = timings['standard']
-                    for field in fieldnames[3:]:
-                        if field in timings:
-                            value = timings[field]
+                    std_timings = timings['standard']
+                    for field in fieldnames[5:]:
+                        if field in std_timings:
+                            value = std_timings[field]
                             if isinstance(value, (int, float)):
                                 row_data[field] = round(float(value), 4)
                             else:
@@ -105,14 +134,14 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
                             row_data[field] = 0
                 else:
                     # 如果没有timings，填充默认值
-                    for field in fieldnames[3:]:
+                    for field in fieldnames[5:]:
                         row_data[field] = 0
 
                 #获取精准数据
                 has_precise_timings = 'precise' in timings
                 if has_precise_timings:
                     precise_timings = timings['precise']
-                    for field in fieldnames[21:]:
+                    for field in fieldnames[23:]:
                         if field in precise_timings:
                             if field != 'callback_stats':
                                 value = precise_timings[field]
@@ -121,13 +150,13 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
                                 else:
                                     row_data[field] = value
                             else:
-                                callback_stats = timings['callback_stats']
+                                callback_stats = precise_timings['callback_stats']
                                 row_data[field] = callback_stats['progress_calls'] + callback_stats['write_calls']
                         else:
                             row_data[field] = 0
                 else:
                     #如果没有timings，填充默认值
-                    for field in fieldnames[21:]:
+                    for field in fieldnames[23:]:
                         row_data[field] = 0
 
                 all_data.append(row_data)
@@ -184,6 +213,8 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
         print(f"缺少必需字段: {stats['missing_fields']}")
         print(f"缺少timings字段: {stats['no_timings']}")
         print(f"其他错误: {stats['other_errors']}")
+        print(f"参考表匹配: {stats['matched_reference']}")
+        print(f"参考表未匹配: {stats['unmatched_reference']}")
         print(f"CSV文件: {output_csv}")
         print(f"生成记录数: {len(all_data)}")
         print(f"主排序方式: {sort_method}")
@@ -198,8 +229,12 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
                 if current_image is not None:
                     print("  " + "-" * 40)
                 current_image = item['image_file']
+            # 显示参考表信息
+            ref_info = ""
+            if item.get('word') or item.get('actual_color'):
+                ref_info = f" | 参考: {item.get('word', '')}/{item.get('actual_color', '')}"
 
-            print(f"  {i + 1:2d}. {item['image_file']} | {item['prompt_used']} | {item['response_text']}")
+            print(f"  {i + 1:2d}. {item['image_file']} | {item['prompt_used']} | {item['response_text']}{ref_info}")
 
         if len(all_data) > 15:
             print(f"  ... 共 {len(all_data)} 条记录")
@@ -212,7 +247,12 @@ def enhanced_process_json_files(json_folder, output_csv, sort_method='natural', 
 
         for image_file, items in list(image_groups.items())[:5]:  # 只显示前5个分组
             prompts = [item['prompt_used'] for item in items]
-            print(f"  {image_file}: {len(items)} 个prompt ({', '.join(prompts)})")
+            # 获取参考表信息
+            ref_data = reference_map.get(image_file, {})
+            ref_info = ""
+            if ref_data:
+                ref_info = f" | 参考: {ref_data.get('word', '')}/{ref_data.get('actual_color', '')}"
+            print(f"  {image_file}: {len(items)} 个prompt ({', '.join(prompts)}){ref_info}")
 
         if len(image_groups) > 5:
             print(f"  ... 共 {len(image_groups)} 个不同的image_file")
