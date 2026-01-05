@@ -101,7 +101,7 @@ class Config:
         if prompt_name is None:
             prompt_name = self.default_prompt
 
-        return self._config['prompts'][prompt_name]
+        return self._config['prompts']['available'][prompt_name]
 
     def get_prompt(self, prompt_name: str = None) -> str:
         """获取指定 prompt 的文本"""
