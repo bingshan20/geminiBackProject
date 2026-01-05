@@ -9,7 +9,7 @@ import pycurl
 from io import BytesIO
 import json
 import time
-from typing import Dict, Any
+from typing import Dict, Any, List
 from pathlib import Path
 from loguru import logger
 from .config import get_config
@@ -345,6 +345,20 @@ class GeminiAnalyzer:
         # 获取 prompt 文本
         prompt_text = self.config.get_prompt(prompt_name)
 
+        #获取prompt的温度等配置
+        prompt_config = self.config.special_prompt(prompt_name)
+        temperature = prompt_config.get('temperature', 0.7)
+        top_p = prompt_config.get('top_p', 0.95)
+        top_k = prompt_config.get('top_k', 40)
+        max_output_tokens = prompt_config.get('max_tokens', 5)
+
+        # 构建生成配置
+        generation_config = {
+            "temperature": temperature,
+            "maxOutputTokens": max_output_tokens,
+            "topP": top_p,
+            "topK": top_k
+        }
         # 读取并编码图片
         full_image_path = self.config.image_directory / image_path
         image_b64 = encode_image_to_base64(full_image_path)
@@ -373,7 +387,8 @@ class GeminiAnalyzer:
                         }
                     ]
                 }
-            ]
+            ],
+            "generationConfig": generation_config
         }
 
         data = json.dumps(payload)
@@ -445,7 +460,11 @@ class GeminiAnalyzer:
                 'success': result.get('success', False),
                 'timing_mode': self.timing_mode,
                 'bandwidth_mbps': self.bandwidth_mbps,
-                'one_way_latency_ms': self.one_way_latency_ms
+                'one_way_latency_ms': self.one_way_latency_ms,
+                'temperature': temperature,
+                'top_p': top_p,
+                'top_k': top_k,
+                'max_output_tokens': max_output_tokens
             })
 
             # 添加时间信息

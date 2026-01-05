@@ -31,21 +31,29 @@ prompts:
     color_detection_speed:
       name: "颜色检测-速度"
       text: "Please quickly say the color of the word; it's okay to make mistakes. Only return one word, and do not return anything else."
+      temperature: 0.05 # 温度高，则有更高的多样性，但速度会慢
+      top_p: 0.8  # 数值大，则考虑更多候选词
+      top_k: 20 # 考虑更多候选词
+      max_tokens: 5 # maxToken数
       description: "检测图片中文字的颜色--强调速度"
 
     color_detection_accuracy:
       name: "颜色检测-准确"
       text: "Please accurately state the color of the word, return only one word, with no additional text."
+      temperature: 0.4
+      top_p: 0.95
+      top_k: 50
+      max_tokens: 5
       description: "检测图片中文字的颜色--强调准确性"
 
     color_detection_speed_simple:
       name: "颜色检测-速度-简单"
-      text: "Quick color: [word]"
+      text: "Ignore the word, state the color. One word."
       description: "检测图片中文字的颜色--强调速度"
 
     color_detection_accuracy_simple:
       name: "颜色检测-准确-简单"
-      text: "Accurate color: [word]"
+      text: "Carefully state the color of the word, ignoring the text. One word."
       description: "检测图片中文字的颜色--强调准确"
 
 # 输出配置

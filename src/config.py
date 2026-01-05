@@ -96,6 +96,13 @@ class Config:
         """获取默认 prompt 名称"""
         return self._config['prompts']['default']
 
+    def special_prompt(self, prompt_name: str = None) -> Dict[str, Any]:
+        """获取指定 prompt 的配置"""
+        if prompt_name is None:
+            prompt_name = self.default_prompt
+
+        return self._config['prompts'][prompt_name]
+
     def get_prompt(self, prompt_name: str = None) -> str:
         """获取指定 prompt 的文本"""
         if prompt_name is None:

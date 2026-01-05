@@ -281,7 +281,7 @@ def get_sorting_options():
 # 使用示例
 if __name__ == "__main__":
     json_folder = input("JSON文件夹路径 (默认:../json_files/0107en): ").strip() or "../json_files/0107en"
-    output_csv = input("输出CSV路径 (默认: ../json_files/csv/output7.csv): ").strip() or "../json_files/csv/output7.csv"
+    output_csv = input("输出CSV路径 (默认: ../json_files/csv/output8.csv): ").strip() or "../json_files/csv/output8.csv"
 
     sort_method, secondary_sort = get_sorting_options()
 
