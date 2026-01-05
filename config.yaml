@@ -38,6 +38,16 @@ prompts:
       text: "Please accurately state the color of the word, return only one word, with no additional text."
       description: "检测图片中文字的颜色--强调准确性"
 
+    color_detection_speed_simple:
+      name: "颜色检测-速度-简单"
+      text: "Quick color: [word]"
+      description: "检测图片中文字的颜色--强调速度"
+
+    color_detection_accuracy_simple:
+      name: "颜色检测-准确-简单"
+      text: "Accurate color: [word]"
+      description: "检测图片中文字的颜色--强调准确"
+
 # 输出配置
 output:
   # 结果文件配置
