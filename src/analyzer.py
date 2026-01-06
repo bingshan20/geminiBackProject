@@ -355,7 +355,7 @@ class GeminiAnalyzer:
         if arg_temp > 0:
             temperature = arg_temp
         if arg_max_token > 0:
-            top_k = arg_max_token
+            max_output_tokens = arg_max_token
         # 构建生成配置
         generation_config = {
             "temperature": temperature,
