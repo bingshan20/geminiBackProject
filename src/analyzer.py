@@ -336,7 +336,8 @@ class GeminiAnalyzer:
         else:  # precise
             self.analyzer = PreciseTimingAnalyzer(self.bandwidth_mbps, self.one_way_latency_ms)
 
-    def analyze_image(self, image_path: str, prompt_name: str = None, save_result: bool = False) -> Dict[str, Any]:
+    def analyze_image(self, image_path: str, prompt_name: str = None, save_result: bool = False,
+                      arg_temp: int = 0, arg_max_token: int = 0) -> Dict[str, Any]:
         """分析单张图片"""
 
         # 重置分析器状态
@@ -351,7 +352,10 @@ class GeminiAnalyzer:
         top_p = prompt_config.get('top_p', 0.95)
         top_k = prompt_config.get('top_k', 40)
         max_output_tokens = prompt_config.get('max_tokens', 5)
-
+        if arg_temp > 0:
+            temperature = arg_temp
+        if arg_max_token > 0:
+            top_k = arg_max_token
         # 构建生成配置
         generation_config = {
             "temperature": temperature,

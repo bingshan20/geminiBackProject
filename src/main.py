@@ -35,6 +35,9 @@ def main():
     parser.add_argument('--output', '-o', type=str, help='输出结果文件名')
     parser.add_argument('--timing-mode', type=str, choices=['standard', 'precise'],
                        default='standard', help='时间分析模式: standard(标准) 或 precise(精确)')
+    parser.add_argument('--temperature', '-temp', type=int, help='prompt的温度')
+    parser.add_argument('--max-token', '-mt', type=int, help='返回的token长度限制')
+
 
     args = parser.parse_args()
 
@@ -53,8 +56,16 @@ def main():
             prompt_names = list(available_prompts.keys())
             analyze_single_image_multiple_prompts(args.image, prompt_names, args.timing_mode)
         else:
+            #加上对温度的传参
+            arg_temp = 0
+            if args.temperature:
+                arg_temp = args.temperature
+            #加上返回token的长度限制
+            arg_max_token = 0
+            if args.max_token:
+                arg_max_token = args.max_token
             # 单 prompt 处理
-            analyze_single_image(args.image, args.prompt, True, args.timing_mode)
+            analyze_single_image(args.image, args.prompt, True, args.timing_mode, arg_temp, arg_max_token)
         return
 
     # 批量处理
@@ -81,13 +92,14 @@ def list_available_prompts():
         print("-" * 30)
 
 
-def analyze_single_image(image_name: str, prompt_name: str = None, save_result: bool = False, timing_mode: str = 'standard'):
+def analyze_single_image(image_name: str, prompt_name: str = None, save_result: bool = False,
+                         timing_mode: str = 'standard', arg_temp: int = 0, arg_max_token: int = 0):
     """分析单个图片"""
     analyzer = GeminiAnalyzer(timing_mode=timing_mode)
 
     logger.info(f"开始分析单个图片: {image_name}")
 
-    result = analyzer.analyze_image(image_name, prompt_name, save_result)
+    result = analyzer.analyze_image(image_name, prompt_name, save_result, arg_temp, arg_max_token)
 
     # 打印结果
     if result.get('success'):
